@@ -83,6 +83,16 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.
 .install{background:var(--accent-soft);border:1px solid var(--accent);border-radius:14px;padding:14px 16px;display:grid;gap:8px}
 .install p{margin:0;font-size:14px;line-height:1.45}
 .install .row{justify-content:space-between}
+details.day{border-top:1px solid var(--line)}
+details.day:first-child{border-top:0}
+details.day summary{list-style:none;display:flex;gap:10px;align-items:center;padding:12px 0;cursor:pointer}
+details.day summary::-webkit-details-marker{display:none}
+details.day summary .t{flex:1;min-width:0}
+details.day summary .t div:first-child{font-weight:600}
+details.day summary .t div+div{font-size:13px;color:var(--muted)}
+.chev{color:var(--muted);font-size:22px;line-height:1;transition:transform .15s;width:14px;text-align:center}
+details.day[open] .chev{transform:rotate(90deg);color:var(--accent)}
+.dayItems{background:var(--bg);border-radius:10px;padding:2px 12px;margin-bottom:12px}
 .warn{background:var(--danger);color:#fff;padding:10px 12px;border-radius:10px;font-size:14px}
 @media (prefers-reduced-motion:no-preference){.op,.btn{transition:background .15s,transform .1s}.btn:active{transform:scale(.98)}}
 </style>
@@ -134,8 +144,8 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.
       <h1>Итоги</h1>
       <div class="panel">
         <div class="row">
-          <label for="fFrom" style="flex:1">С<input type="date" id="fFrom"></label>
-          <label for="fTo" style="flex:1">По<input type="date" id="fTo"></label>
+          <div style="flex:1;display:grid;gap:6px"><label for="fFrom">С</label><input type="date" id="fFrom"></div>
+          <div style="flex:1;display:grid;gap:6px"><label for="fTo">По</label><input type="date" id="fTo"></div>
         </div>
         <div class="row">
           <button class="btn ghost" id="pMonth">Этот месяц</button>
@@ -147,7 +157,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.
         </div>
       </div>
       <div class="panel"><h2>По операциям</h2><div class="list" id="byOp"></div></div>
-      <div class="panel"><h2>По дням</h2><div class="list" id="byDay"></div></div>
+      <div class="panel"><div style="display:grid;gap:4px"><h2>По дням</h2><p class="note">Нажмите на день, чтобы увидеть записи и удалить ошибочную.</p></div><div class="list" id="byDay"></div></div>
       <button class="btn ghost" id="copyRep">Скопировать отчёт (для мессенджера)</button>
     </div>
   </section>
@@ -206,7 +216,7 @@ input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.
           <li>Введите <b>вес в кг</b>. Если взвешивали несколько раз, пишите через плюс: <span class="kbd">33,3+81,8+105,4</span></li>
           <li>Сумма посчитается сразу. Нажмите <b>«Записать»</b>.</li>
         </ol>
-        <p class="note">Ошиблись — внизу в списке за день нажмите «Удалить» два раза и запишите заново.</p>
+        <p class="note">Ошиблись — нажмите «Удалить» два раза и запишите заново. Удалить можно внизу на «Вводе» (записи выбранного дня) или в «Итогах» → «По дням» → нажать на нужный день.</p>
       </div>
 
       <div class="panel help">
@@ -343,12 +353,14 @@ function renderDay(){
 }
 
 /* --- Итоги --- */
+const openDays=new Set();
 function setMonth(off){
   const n=new Date();const f=new Date(n.getFullYear(),n.getMonth()+off,1);const l=new Date(n.getFullYear(),n.getMonth()+off+1,0);
   $('fFrom').value=iso(f);$('fTo').value=iso(l);renderSum();
 }
 $('pMonth').onclick=()=>setMonth(0);$('pPrev').onclick=()=>setMonth(-1);
-$('fFrom').onchange=renderSum;$('fTo').onchange=renderSum;
+['fFrom','fTo'].forEach(id=>{const el=$(id);el.addEventListener('change',renderSum);el.addEventListener('input',renderSum);
+  el.addEventListener('click',()=>{try{el.showPicker&&el.showPicker()}catch(e){}})});
 function periodEntries(){const f=$('fFrom').value,t=$('fTo').value;return S.entries.filter(e=>(!f||e.date>=f)&&(!t||e.date<=t)).sort((a,b)=>a.date<b.date?-1:1)}
 function renderSum(){
   const es=periodEntries();
@@ -366,11 +378,18 @@ function renderSum(){
   const byDay={};es.forEach(e=>{byDay[e.date]=byDay[e.date]||[];byDay[e.date].push(e)});
   const bd=$('byDay');bd.textContent='';
   Object.keys(byDay).sort().reverse().forEach(day=>{
-    const arr=byDay[day];const d=document.createElement('div');d.className='item';
+    const arr=byDay[day];
+    const det=document.createElement('details');det.className='day';if(openDays.has(day))det.open=true;
+    det.addEventListener('toggle',()=>{det.open?openDays.add(day):openDays.delete(day)});
+    const sm=document.createElement('summary');
     const t=document.createElement('div');t.className='t';const a=document.createElement('div');a.textContent=human(day);
-    const b=document.createElement('div');b.textContent=arr.map(e=>e.op+' '+kgf(e.kg)).join(', ');t.append(a,b);
-    const s=document.createElement('div');s.className='s';s.textContent=money(arr.reduce((q,e)=>q+e.kg*e.rate,0));
-    d.append(t,s);bd.appendChild(d);
+    const b=document.createElement('div');b.textContent='записей: '+arr.length+' · '+kgf(arr.reduce((q,e)=>q+e.kg,0))+' кг';t.append(a,b);
+    const sv=document.createElement('div');sv.className='s';sv.textContent=money(arr.reduce((q,e)=>q+e.kg*e.rate,0));
+    const ch=document.createElement('span');ch.className='chev';ch.setAttribute('aria-hidden','true');ch.textContent='›';
+    sm.append(t,sv,ch);det.appendChild(sm);
+    const inner=document.createElement('div');inner.className='dayItems';
+    arr.forEach(e=>inner.appendChild(entryRow(e,false)));
+    det.appendChild(inner);bd.appendChild(det);
   });
   if(!es.length)bd.innerHTML='<div class="empty">—</div>';
 }
